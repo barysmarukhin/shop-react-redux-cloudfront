@@ -5,7 +5,7 @@ frameworkVersion: "3"
 provider:
   name: aws
   runtime: nodejs16.x
-  region: us-east-1
+  # region: us-east-1
   # setup profile for AWS CLI.
   profile: Delfin_admin
 
@@ -21,6 +21,8 @@ custom:
   client:
     bucketName: store-app-react-delfin
     distributionFolder: dist
+    indexDocument: index.html
+    manageResources: false
   s3BucketName: ${self:custom.client.bucketName}
 
   ## Serverless-single-page-app-plugin configuration:
@@ -36,12 +38,12 @@ resources:
       Type: AWS::S3::Bucket
       Properties:
         BucketName: ${self:custom.s3BucketName}
-        OwnershipControls:
-          Rules:
-            - ObjectOwnership: ObjectWriter
         WebsiteConfiguration:
           IndexDocument: index.html
           ErrorDocument: index.html
+        OwnershipControls:
+          Rules:
+            - ObjectOwnership: ObjectWriter
         # VersioningConfiguration:
         #   Status: Enabled
 
@@ -53,25 +55,22 @@ resources:
           Ref: WebAppS3Bucket
         PolicyDocument:
           Statement:
-            - Sid: "AllowCloudFrontServicePrincipal"
+            - Sid: "AllowCloudFrontAccessIdentity"
               Effect: Allow
               Action: s3:GetObject
               Resource: arn:aws:s3:::${self:custom.s3BucketName}/*
               Principal:
-                Service: "cloudfront.amazonaws.com"
-              Condition:
-                StringEquals:
-                  AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${WebAppCloudFrontDistribution}
+                AWS:
+                  Fn::Join:
+                    - " "
+                    - - "arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity"
+                      - !Ref OriginAccessIdentity
 
-    CloudFrontOriginAccessControl:
-      Type: AWS::CloudFront::OriginAccessControl
+    OriginAccessIdentity:
+      Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
       Properties:
-        OriginAccessControlConfig:
-          Description: Default Origin Access Control
-          Name: !Ref AWS::StackName
-          OriginAccessControlOriginType: s3
-          SigningBehavior: always
-          SigningProtocol: sigv4
+        CloudFrontOriginAccessIdentityConfig:
+          Comment: Access identity between CloudFront and S3 bucket
 
     ## Specifying the CloudFront Distribution to server your Web Application
     WebAppCloudFrontDistribution:
@@ -84,8 +83,7 @@ resources:
               Id: myS3Origin
               ## In case you don't want to restrict the bucket access use CustomOriginConfig and remove S3OriginConfig
               S3OriginConfig:
-                OriginAccessIdentity: ''
-              OriginAccessControlId: !GetAtt CloudFrontOriginAccessControl.Id
+                OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${OriginAccessIdentity}
               # CustomOriginConfig:
               #   HTTPPort: 80
               #   HTTPSPort: 443
